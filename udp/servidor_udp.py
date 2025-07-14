@@ -3,7 +3,7 @@ import threading
 import random
 
 BUFFER_SIZE = 1024
-NUM_CLIENTS = 16  # <--- Aqui você altera o número máximo de clientes simultâneos
+NUM_CLIENTS = 16
 
 clients = {}
 clients_lock = threading.Lock()
@@ -54,7 +54,7 @@ def print_scoreboard():
             print(f"{name}: {score:.2f} pontos")
         print("=====================================\n")
 
-def handle_client(client_socket, address):
+def handle_client(server_socket, address):
     global next_client_id
 
     with next_client_id_lock:
@@ -62,7 +62,7 @@ def handle_client(client_socket, address):
         next_client_id += 1
 
     with clients_lock:
-        clients[client_name] = client_socket
+        clients[client_name] = address
     with answers_lock:
         client_answers[client_name] = []
         client_scores[client_name] = 0.0
@@ -79,9 +79,9 @@ def handle_client(client_socket, address):
         for _ in range(5):
             previous_index, question = get_next_question(previous_index)
             formatted = format_question(question)
-            client_socket.sendall(formatted.encode())
+            server_socket.sendto(formatted.encode(), address)
 
-            data = client_socket.recv(BUFFER_SIZE)
+            data, _ = server_socket.recvfrom(BUFFER_SIZE)
             if not data:
                 break
 
@@ -98,9 +98,12 @@ def handle_client(client_socket, address):
                     client_scores[client_name] += score
                     with final_scores_lock:
                         final_scores[client_name] = client_scores[client_name]
+                    print(f"[{client_name}] Acertou! +{score:.2f} pontos (Total: {client_scores[client_name]:.2f})")
                     score_decrement += 0.1
+                else:
+                    print(f"[{client_name}] Errou! Resposta correta era {question['answer']}")
 
-        client_socket.sendall(b"Obrigado por responder. Encerrando.")
+        server_socket.sendto(b"Obrigado por responder. Encerrando.", address)
     except Exception as e:
         print(f"[{client_name}] Erro: {e}")
     finally:
@@ -113,27 +116,25 @@ def handle_client(client_socket, address):
                 del client_answers[client_name]
             if client_name in client_scores:
                 del client_scores[client_name]
-        client_socket.close()
         print(f"[-] {client_name} desconectado.")
 
         print_scoreboard()
 
 def start_server(host='127.0.0.1', port=12345):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((host, port))
-    server.listen(NUM_CLIENTS)
-    print(f"[*] Server listening on {host}:{port}")
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind((host, port))
+    print(f"[*] Servidor UDP escutando em {host}:{port}")
 
     try:
         while True:
-            client_socket, address = server.accept()
-            client_thread = threading.Thread(target=handle_client, args=(client_socket, address))
+            data, address = server_socket.recvfrom(BUFFER_SIZE)
+            client_thread = threading.Thread(target=handle_client, args=(server_socket, address))
             client_thread.daemon = True
             client_thread.start()
     except KeyboardInterrupt:
         print("\n[!] Servidor encerrado.")
     finally:
-        server.close()
+        server_socket.close()
 
 if __name__ == "__main__":
-    start_server()
+    start_server() 
