@@ -138,6 +138,7 @@ class QuizRunner:
         print(f"   • {self.num_clients} Clientes HTTPS em paralelo (clientes_https.py) - Silenciosos")
         print("   • Exibe resultado final")
         print("   • Usa SSL/TLS para comunicação segura")
+        print("   • ⏰ Execução limitada a 15 segundos")
         print("=" * 60)
         
         if not os.path.exists("servidor_https.py"):
@@ -155,19 +156,46 @@ class QuizRunner:
         server_thread.start()
         clients_thread.start()
         
-        print("✅ Sistema HTTPS iniciado! Aguardando finalização...")
+        print("✅ Sistema HTTPS iniciado! Executando por 15 segundos...")
         print("=" * 60)
         
         try:
-            server_thread.join()
-            clients_thread.join()
+            # Aguarda 15 segundos
+            time.sleep(15)
             
-            time.sleep(3)
+            print("\n⏰ Tempo limite de 15 segundos atingido!")
+            print("🔄 Encerrando processos...")
+            
+            # Encerra todos os processos
+            if self.server_process:
+                self.server_process.terminate()
+                print("🖥️  Servidor HTTPS encerrado")
+            
+            for i, process in enumerate(self.client_processes):
+                if process:
+                    process.terminate()
+                    print(f"📱 Cliente HTTPS {i+1} encerrado")
+            
+            # Aguarda um pouco para os processos terminarem
+            time.sleep(2)
+            
+            # Força o encerramento se necessário
+            if self.server_process and self.server_process.poll() is None:
+                self.server_process.kill()
+                print("🖥️  Servidor HTTPS forçadamente encerrado")
+            
+            for i, process in enumerate(self.client_processes):
+                if process and process.poll() is None:
+                    process.kill()
+                    print(f"📱 Cliente HTTPS {i+1} forçadamente encerrado")
+            
+            time.sleep(1)
             
             self.extract_final_results()
             
         except KeyboardInterrupt:
             print("\n🛑 Sistema HTTPS encerrado pelo usuário.")
+            self.signal_handler(signal.SIGINT, None)
 
 def main():
     runner = QuizRunner()
